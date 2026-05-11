@@ -1,0 +1,184 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local travado = false
+local FOV = 80
+local ESP = {}
+
+-- Círculo FOV
+local Circle = Drawing.new("Circle")
+Circle.Visible = true
+Circle.Radius = FOV
+Circle.Color = Color3.fromRGB(255,255,255)
+Circle.Thickness = 2
+Circle.Filled = false
+Circle.Transparency = 1
+
+-- Criar ESP
+local function criarESP(player)
+	if player == LocalPlayer then return end
+
+	local box = Drawing.new("Square")
+	box.Visible = false
+	box.Thickness = 2
+	box.Filled = false
+	box.Color = Color3.fromRGB(255,255,0)
+
+	local health = Drawing.new("Square")
+	health.Visible = false
+	health.Filled = true
+
+	ESP[player] = {
+		Box = box,
+		Health = health
+	}
+
+	local function aplicarHighlight(character)
+		if not character then return end
+
+		local old = character:FindFirstChild("ESPHighlight")
+		if old then old:Destroy() end
+
+		local h = Instance.new("Highlight")
+		h.Name = "ESPHighlight"
+		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		h.FillTransparency = 0.5
+		h.OutlineTransparency = 0
+
+		if player.Team == LocalPlayer.Team then
+			h.FillColor = Color3.fromRGB(0,100,255)
+		else
+			h.FillColor = Color3.fromRGB(255,255,0)
+		end
+
+		h.OutlineColor = Color3.fromRGB(255,255,255)
+		h.Parent = character
+	end
+
+	player.CharacterAdded:Connect(aplicarHighlight)
+
+	if player.Character then
+		aplicarHighlight(player.Character)
+	end
+end
+
+-- Criar pros players
+for _, player in pairs(Players:GetPlayers()) do
+	criarESP(player)
+end
+
+Players.PlayerAdded:Connect(criarESP)
+
+-- Encontrar alvo
+local function acharAlvo()
+	local alvo
+	local menorDist = FOV
+	local mousePos = UserInputService:GetMouseLocation()
+
+	for _, player in pairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer
+		and player.Character
+		and player.Character:FindFirstChild("Head")
+		and player.Team ~= LocalPlayer.Team then
+
+			local pos, visivel = Camera:WorldToViewportPoint(player.Character.Head.Position)
+
+			if visivel then
+				local dist = (Vector2.new(pos.X,pos.Y) - mousePos).Magnitude
+
+				if dist < menorDist then
+					menorDist = dist
+					alvo = player.Character.Head
+				end
+			end
+		end
+	end
+
+	return alvo
+end
+
+-- Loop
+RunService.RenderStepped:Connect(function()
+	local mousePos = UserInputService:GetMouseLocation()
+	Circle.Position = mousePos
+
+	-- Aimbot
+	if travado then
+		local alvo = acharAlvo()
+
+		if alvo then
+			Camera.CFrame = Camera.CFrame:Lerp(
+				CFrame.new(Camera.CFrame.Position, alvo.Position),
+				0.15
+			)
+		end
+	end
+
+	-- ESP
+	for player, drawings in pairs(ESP) do
+		if player.Character
+		and player.Character:FindFirstChild("HumanoidRootPart")
+		and player.Character:FindFirstChild("Humanoid")
+		and player.Team ~= LocalPlayer.Team then
+
+			local hrp = player.Character.HumanoidRootPart
+			local humanoid = player.Character.Humanoid
+
+			local pos, visible = Camera:WorldToViewportPoint(hrp.Position)
+
+			if visible then
+				local size = 2000 / pos.Z
+				local width = size / 2
+				local height = size
+
+				drawings.Box.Size = Vector2.new(width, height)
+				drawings.Box.Position = Vector2.new(
+					pos.X - width/2,
+					pos.Y - height/2
+				)
+				drawings.Box.Visible = true
+
+				local hp = humanoid.Health / humanoid.MaxHealth
+				local barHeight = height * hp
+
+				drawings.Health.Size = Vector2.new(2, barHeight)
+
+				drawings.Health.Position = Vector2.new(
+					pos.X - width/2 - 4,
+					pos.Y + height/2 - barHeight
+				)
+
+				drawings.Health.Color = Color3.fromRGB(
+					255 - (255 * hp),
+					255 * hp,
+					0
+				)
+
+				drawings.Health.Visible = true
+			else
+				drawings.Box.Visible = false
+				drawings.Health.Visible = false
+			end
+		else
+			drawings.Box.Visible = false
+			drawings.Health.Visible = false
+		end
+	end
+end)
+
+-- Mouse direito
+UserInputService.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton2 then
+		travado = true
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton2 then
+		travado = false
+	end
+end)
